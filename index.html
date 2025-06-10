@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Divisor de Texto</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f2f4f8;
+      margin: 0;
+      padding: 2rem;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background-color: #fff;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    textarea, input, select, button {
+      font-family: inherit;
+      width: 100%;
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      background-color: #4f46e5;
+      color: white;
+      font-weight: 600;
+      transition: background-color 0.3s ease;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #3730a3;
+    }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .char-count-container {
+      background-color: #eef2ff;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      margin-top: 1rem;
+    }
+    .result .chunk {
+      background-color: #f9fafb;
+      border-left: 4px solid #4f46e5;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    .chunk h3 {
+      margin-top: 0;
+    }
+    .copy-button {
+      background-color: #10b981;
+      margin-top: 0.5rem;
+    }
+    .copy-button:hover {
+      background-color: #059669;
+    }
+    #clearBottomButton {
+      background-color: #ef4444;
+      display: none;
+      margin-top: 2rem;
+    }
+    #videoTimeEstimate {
+      font-weight: bold;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Divisor de Texto</h1>
+    <textarea id="fullText" placeholder="Insira o texto completo aqui..." oninput="updateCharCount(this.value)"></textarea>
+    <input type="number" id="charLimit" value="3000" min="1" placeholder="Limite de caracteres por parte" />
+
+    <div class="button-row">
+      <button onclick="divideText()">Dividir Texto</button>
+      <button onclick="clearText()">Limpar Texto</button>
+      <button onclick="handlePaste()">Colar Texto</button>
+    </div>
+
+    <div id="charCountContainer" class="char-count-container">
+      <p><strong>Contagem de Caracteres:</strong></p>
+      <p>Com espaços: <span id="charCountWithSpaces">0</span></p>
+      <p>Sem espaços: <span id="charCountNoSpaces">0</span></p>
+      <p>Palavras: <span id="wordCount">0</span></p>
+      <p>Parágrafos: <span id="paragraphCount">0</span></p>
+    </div>
+
+    <label for="readingMode">Modo de Leitura:</label>
+    <select id="readingMode" onchange="estimateVideoTime()">
+      <option value="normal">Normal</option>
+      <option value="fast">Rápido</option>
+      <option value="slow">Pausado</option>
+    </select>
+    <div id="videoTimeEstimate">Estimativa de Tempo de Vídeo: 0 minutos</div>
+
+    <div id="result" class="result"></div>
+
+    <button id="clearBottomButton" onclick="clearText()">Limpar Tudo</button>
+  </div>
+
+  <textarea id="pasteArea" style="position: fixed; top: -9999px; left: -9999px;"></textarea>
+  <script>
+    function handlePaste() {
+            const pasteArea = document.getElementById('pasteArea');
+            const fullText = document.getElementById('fullText');
+            pasteArea.value = '';
+            pasteArea.focus();
+            document.execCommand('paste');
+            setTimeout(() => {
+                if (pasteArea.value) {
+                    fullText.value = pasteArea.value;
+                    updateCharCount(pasteArea.value);
+                } else {
+                    tryClipboardAPI();
+                }
+            }, 100);
+        }
+
+        function tryClipboardAPI() {
+            const fullText = document.getElementById('fullText');
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.readText().then(text => {
+                    fullText.value = text;
+                    updateCharCount(text);
+                }).catch(() => {
+                    fullText.placeholder = 'Use Ctrl+V para colar o texto';
+                    fullText.focus();
+                });
+            } else {
+                fullText.placeholder = 'Use Ctrl+V para colar o texto';
+                fullText.focus();
+            }
+        }
+
+        document.getElementById('fullText').addEventListener('paste', function() {
+            setTimeout(() => {
+                updateCharCount(this.value);
+            }, 0);
+        });
+
+        function updateCharCount(text) {
+            const totalChars = text.length;
+            const charsNoSpaces = text.replace(/\s/g, '').length;
+            const words = text.trim().split(/\s+/).filter(word => word.length > 0);
+            const wordCount = words.length || 0;
+            const paragraphs = text.split('\n').filter(para => para.trim().length > 0);
+            const paragraphCount = paragraphs.length;
+
+            document.getElementById('charCountWithSpaces').textContent = totalChars;
+            document.getElementById('charCountNoSpaces').textContent = charsNoSpaces;
+            document.getElementById('wordCount').textContent = wordCount;
+            document.getElementById('paragraphCount').textContent = paragraphCount;
+
+            estimateVideoTime();
+        }
+
+        function findSentenceBreak(text, startPosition, endPosition) {
+            // Procurar o último ponto ou vírgula antes do limite máximo de caracteres
+            let lastPeriod = -1;
+            let lastComma = -1;
+            
+            // Localiza o último ponto antes do limite
+            for (let i = startPosition; i < endPosition; i++) {
+                if (text[i] === '.') {
+                    lastPeriod = i;
+                }
+            }
+            
+            // Localiza a última vírgula antes do limite
+            for (let i = startPosition; i < endPosition; i++) {
+                if (text[i] === ',') {
+                    lastComma = i;
+                }
+            }
+            
+            // Se encontrou um ponto, usa ele como ponto de quebra
+            if (lastPeriod !== -1) {
+                return lastPeriod + 1; // +1 para incluir o ponto
+            } 
+            // Se não encontrou ponto mas encontrou vírgula, usa a vírgula
+            else if (lastComma !== -1) {
+                return lastComma + 1; // +1 para incluir a vírgula
+            }
+            
+            // Se não encontrou nem ponto nem vírgula, procurar pelo último espaço
+            let lastSpace = -1;
+            for (let i = startPosition; i < endPosition; i++) {
+                if (text[i] === ' ') {
+                    lastSpace = i;
+                }
+            }
+            
+            if (lastSpace !== -1) {
+                return lastSpace + 1; // +1 para incluir o espaço
+            }
+            
+            // Se não encontrou nenhum separador válido, retorna a posição original
+            return endPosition;
+        }
+
+        function divideText() {
+            const fullText = document.getElementById('fullText').value;
+            const charLimit = parseInt(document.getElementById('charLimit').value);
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+
+            if (!fullText.trim()) {
+                return;
+            }
+
+            let currentPosition = 0;
+            let chunks = [];
+
+            while (currentPosition < fullText.length) {
+                let endPosition = Math.min(currentPosition + charLimit, fullText.length);
+                
+                if (endPosition >= fullText.length) {
+                    // Se chegou ao final do texto, usa todo o conteúdo restante
+                    endPosition = fullText.length;
+                } else {
+                    // Buscar o último ponto ou vírgula ANTES do limite de caracteres
+                    endPosition = findSentenceBreak(fullText, currentPosition, endPosition);
+                }
+                
+                chunks.push(fullText.substring(currentPosition, endPosition).trim());
+                currentPosition = endPosition;
+            }
+
+            chunks.forEach((chunk, index) => {
+                const chunkDiv = document.createElement('div');
+                chunkDiv.className = 'chunk';
+                chunkDiv.innerHTML = `
+                    <h3>Parte ${index + 1}</h3>
+                    <p>${chunk}</p>
+                    <button class="copy-button" onclick="copyText(this)">Copiar Texto</button>
+                `;
+                resultDiv.appendChild(chunkDiv);
+            });
+
+            // Mostrar o botão de limpar na parte inferior
+            document.getElementById('clearBottomButton').style.display = 'block';
+            
+            // Rolar para mostrar os resultados
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+            
+            estimateVideoTime();
+        }
+
+        function estimateVideoTime() {
+            const text = document.getElementById('fullText').value;
+            const charCount = text.length;
+            const readingMode = document.getElementById('readingMode').value;
+
+            let charactersPerMinute;
+            switch (readingMode) {
+                case 'fast':
+                    charactersPerMinute = 957.85;
+                    break;
+                case 'slow':
+                    charactersPerMinute = 702.24;
+                    break;
+                default:
+                    charactersPerMinute = 813.49;
+                    break;
+            }
+
+            const minutes = Math.ceil(charCount / charactersPerMinute);
+            document.getElementById('videoTimeEstimate').textContent = `Estimativa de Tempo de Vídeo: ${minutes} minutos`;
+        }
+
+        function clearText() {
+            document.getElementById('fullText').value = '';
+            document.getElementById('result').innerHTML = '';
+            updateCharCount('');
+            document.getElementById('videoTimeEstimate').textContent = 'Estimativa de Tempo de Vídeo: 0 minutos';
+            
+            // Esconder o botão de limpar na parte inferior
+            document.getElementById('clearBottomButton').style.display = 'none';
+            
+            // Remover classe 'copied' de todos os botões
+            const buttons = document.querySelectorAll('.copy-button');
+            buttons.forEach(button => {
+                button.classList.remove('copied');
+                button.textContent = 'Copiar Texto';
+            });
+        }
+
+        function copyText(button) {
+            const textToCopy = button.previousElementSibling.textContent;
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    updateButtonText(button);
+                }).catch(() => {
+                    fallbackCopyTextToClipboard(textToCopy, button);
+                });
+            } else {
+                fallbackCopyTextToClipboard(textToCopy, button);
+            }
+        }
+
+        function fallbackCopyTextToClipboard(text, button) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+
+            document.body.appendChild(textArea);
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                updateButtonText(button);
+            } catch (err) {
+                console.error('Erro ao copiar o texto: ', err);
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function updateButtonText(button) {
+            button.textContent = 'Texto Copiado!';
+            button.classList.add('copied');
+        }
+  </script>
+</body>
+</html>
